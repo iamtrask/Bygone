@@ -19,6 +19,7 @@ const ethereumUrl = secret.ethereumUrl
 const clientId = secret.clientId
 const key = secret.key
 
+var uport;
 var specificNetworkAddress = "";
 var decodedId = "";
 var creds = null;
@@ -35,7 +36,8 @@ const server = http.createServer((req, res) => {
   if(req.url.includes("addModel")) {
     var q = url.parse(req.url, true).query
 
-    addModel(q.input, q.target, (modelId) => {
+    //addModel(q.input, q.target, (modelId) => {
+    addModel(q.model, (modelId) => {
       res.statusCode = 200;
       res.setHeader('Content-Type', 'text/plain');
       res.end();
@@ -74,20 +76,18 @@ function connectUport(cb) {
   })
 }
 
-function addModel(inputAddress, targetAddress, cb) {
+function addModel(modelAddress, cb) {
+  console.log("modelAddress", modelAddress)
+
   console.log("credentials", creds)
 
   console.log('decodedId', decodedId)
 
   console.log('specificNetworkAddress', specificNetworkAddress)
 
-  var input = 'QmNqVVej89i1xDGDgiHZzXbiX9RypoFGFEGHgWqeZBRaUk';
-  var target = 'QmNqVVej89i1xDGDgiHZzXbiX9RypoFGFEGHgWqeZBRaUk';
+  var modelAddressArray = addressToArray(modelAddress);
 
-  var a1 = addressToArray(input);
-  var a2 = a1 + addressToArray(target);
-
-  console.log(a2);
+  console.log("modelAddressArray", modelAddressArray);
 
   const data = web3.eth.abi.encodeFunctionCall({
     name : "addModel",
@@ -106,7 +106,7 @@ function addModel(inputAddress, targetAddress, cb) {
         type: "uint256"
       }
     ],
-  }, [a2, 0, 0]);
+  }, [modelAddressArray, 0, 0]);
 
   const params = {
     from: specificNetworkAddress,
@@ -123,7 +123,7 @@ function addModel(inputAddress, targetAddress, cb) {
 }
 
 function login(cb) {
-  const uport = connectUport(cb);
+  uport = connectUport(cb);
 
   // Request credentials to login
   uport.requestCredentials({

@@ -1,0 +1,6 @@
+{
+  "hostname": "127.0.0.1",
+  "port": 3000,
+  "network": "rinkeby",
+  "abiFile": "../mine.js/lib/ModelRepository.abi"
+}

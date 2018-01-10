@@ -5,29 +5,48 @@ const Web3 = require('web3');
 const uportConnect = require('uport-connect')
 const UPORT = require('uport')
 const mnid = require('mnid')
+const url = require('url');
 
 // config
-const hostname = '127.0.0.1';
-const port = 3000;
-const ethereumUrl = 'https://rinkeby.infura.io/INFURA_KEY' // Change
-const clientId = 'UPORT_CLIENT_ID'; // Change
-const key = 'UPORT_PRIVATE_KEY'; // Change
-const network = 'rinkeby';
+const config = JSON.parse(fs.readFileSync('./config.json', 'utf8'))
+const hostname = config.hostname
+const port = config.port
+const network = config.network
+const abiFile = config.abiFile
+
+const secret = JSON.parse(fs.readFileSync('./config-secret.json', 'utf8'))
+const ethereumUrl = secret.ethereumUrl
+const clientId = secret.clientId
+const key = secret.key
+
+var specificNetworkAddress = "";
+var decodedId = "";
+var creds = null;
 
 const web3 = new Web3(new Web3.providers.HttpProvider(ethereumUrl));
 
 // setup contract
 const contractAddress = '0xd60e1a150b59a89a8e6e6ff2c03ffb6cb4096205'
-const abi = JSON.parse(fs.readFileSync('../mine.js/node_modules/@openmined/sonar/build/ModelRepository.abi', 'utf8'))
+const abi = JSON.parse(fs.readFileSync(abiFile, 'utf8'))
 const contract = new web3.eth.Contract(abi, contractAddress)
 
 // setup server
 const server = http.createServer((req, res) => {
-  login((uri) => {
-    res.statusCode = 200;
-    res.setHeader('Content-Type', 'text/plain');
-    res.end(uri);
-  })
+  if(req.url.includes("addModel")) {
+    var q = url.parse(req.url, true).query
+
+    addModel(q.input, q.target, (modelId) => {
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'text/plain');
+      res.end();
+    })
+  } else {
+    login((uri) => {
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'text/plain');
+      res.end(uri);
+    })
+  }
 });
 
 server.listen(port, hostname, () => {
@@ -43,8 +62,8 @@ function addressToArray (ipfsAddress) {
   return parts
 }
 
-function login(cb) {
-  const uport = new uportConnect.Connect('OpenMined', {
+function connectUport(cb) {
+  return new uportConnect.Connect('OpenMined', {
     clientId: clientId,
     network: network,
     signer: uportConnect.SimpleSigner(key),
@@ -53,6 +72,58 @@ function login(cb) {
       console.log('uportConnect.Connect uri', uri)
     }
   })
+}
+
+function addModel(inputAddress, targetAddress, cb) {
+  console.log("credentials", creds)
+
+  console.log('decodedId', decodedId)
+
+  console.log('specificNetworkAddress', specificNetworkAddress)
+
+  var input = 'QmNqVVej89i1xDGDgiHZzXbiX9RypoFGFEGHgWqeZBRaUk';
+  var target = 'QmNqVVej89i1xDGDgiHZzXbiX9RypoFGFEGHgWqeZBRaUk';
+
+  var a1 = addressToArray(input);
+  var a2 = a1 + addressToArray(target);
+
+  console.log(a2);
+
+  const data = web3.eth.abi.encodeFunctionCall({
+    name : "addModel",
+    type : "function",
+    inputs: [
+      {
+        name: "_weights",
+        type: "bytes32[]"
+      },
+      {
+        name: "initial_error",
+        type: "uint256"
+      },
+      {
+        name: "target_error",
+        type: "uint256"
+      }
+    ],
+  }, [a2, 0, 0]);
+
+  const params = {
+    from: specificNetworkAddress,
+    data: data,
+    gas: 500000,
+    to: contractAddress
+  }
+
+  uport.sendTransaction(params).then(txResponse => {
+    console.log('txResponse', txResponse)
+  })
+
+  cb(1);
+}
+
+function login(cb) {
+  const uport = connectUport(cb);
 
   // Request credentials to login
   uport.requestCredentials({
@@ -66,10 +137,11 @@ function login(cb) {
 
     console.log("credentials", credentials)
 
-    const decodedId = mnid.decode(credentials.address)
+    creds = credentials;
+    decodedId = mnid.decode(credentials.address)
     console.log('decodedId', decodedId)
 
-    const specificNetworkAddress = decodedId.address
+    specificNetworkAddress = decodedId.address
     console.log('specificNetworkAddress', specificNetworkAddress)
 
     contract.methods['getNumModels']().call({from:specificNetworkAddress}).then(modelCount => {

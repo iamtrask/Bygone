@@ -20,9 +20,10 @@ const clientId = secret.clientId
 const key = secret.key
 
 var uport;
-var specificNetworkAddress = "";
-var decodedId = "";
+var specificNetworkAddress = null;
+var decodedId = null;
 var creds = null;
+var pendingJobs = Array();
 
 const web3 = new Web3(new Web3.providers.HttpProvider(ethereumUrl));
 
@@ -33,11 +34,19 @@ const contract = new web3.eth.Contract(abi, contractAddress)
 
 // setup server
 const server = http.createServer((req, res) => {
+  console.log("got request", req.url);
   if(req.url.includes("addModel")) {
     var q = url.parse(req.url, true).query
 
-    //addModel(q.input, q.target, (modelId) => {
     addModel(q.model, (modelId) => {
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'text/plain');
+      res.end();
+    })
+  } else if(req.url.includes("addWeights")) {
+    var q = url.parse(req.url, true).query
+
+    addWeights(q.model, q.weights, () => {
       res.statusCode = 200;
       res.setHeader('Content-Type', 'text/plain');
       res.end();
@@ -76,37 +85,33 @@ function connectUport(cb) {
   })
 }
 
+
+var addModelFunc = {
+  name : "addModel",
+  type : "function",
+  inputs: [
+    {
+      name: "_weights",
+      type: "bytes32[]"
+    },
+    {
+      name: "initial_error",
+      type: "uint256"
+    },
+    {
+      name: "target_error",
+      type: "uint256"
+    }
+  ],
+}
+
 function addModel(modelAddress, cb) {
-  console.log("modelAddress", modelAddress)
-
-  console.log("credentials", creds)
-
-  console.log('decodedId', decodedId)
-
-  console.log('specificNetworkAddress', specificNetworkAddress)
-
   var modelAddressArray = addressToArray(modelAddress);
 
-  console.log("modelAddressArray", modelAddressArray);
+  console.log("added model for address: ", modelAddressArray);
 
-  const data = web3.eth.abi.encodeFunctionCall({
-    name : "addModel",
-    type : "function",
-    inputs: [
-      {
-        name: "_weights",
-        type: "bytes32[]"
-      },
-      {
-        name: "initial_error",
-        type: "uint256"
-      },
-      {
-        name: "target_error",
-        type: "uint256"
-      }
-    ],
-  }, [modelAddressArray, 0, 0]);
+  const data = web3.eth.abi.encodeFunctionCall(addModelFunc,
+                                               [modelAddressArray, 0, 0]);
 
   const params = {
     from: specificNetworkAddress,
@@ -118,6 +123,46 @@ function addModel(modelAddress, cb) {
   uport.sendTransaction(params).then(txResponse => {
     console.log('txResponse', txResponse)
   })
+  .catch(err => console.error(err))
+
+  cb(1);
+}
+
+var addGradientsFunc = {
+    name: 'addGradient',
+    type: 'function',
+    inputs: [{
+      type: 'uint256',
+      name: 'model_id'
+    }, {
+      type: 'bytes32[]',
+      name: '_grad_addr'
+    }]
+}
+
+function addWeights(modelId, weightsAddress, cb) {
+  var weightsAddressArray = addressToArray(weightsAddress);
+
+  console.log("add weights for model: ", modelId, " for: ", weightsAddressArray);
+
+  const data = web3.eth.abi.encodeFunctionCall(addGradientsFunc,
+                                              [modelId, weightsAddressArray]);
+
+  if(specificNetworkAddress == null) {
+    pendingJobs.push(data)
+  } else {
+    const params = {
+      from: specificNetworkAddress,
+      data: data,
+      gas: 500000,
+      to: contractAddress
+    }
+
+    uport.sendTransaction(params).then(txResponse => {
+      console.log('txResponse', txResponse)
+    })
+    .catch(err => console.error(err))
+  }
 
   cb(1);
 }
@@ -148,35 +193,21 @@ function login(cb) {
       console.log('modelCount', modelCount)
     })
 
-    var contractFactory = UPORT.ContractFactory()
-    var uportContract = contractFactory(abi).at(contractAddress)
+    if(pendingJobs.length > 0) {
+      for(var i = 0; i < pendingJobs.length; i++) {
+        const params = {
+          from: specificNetworkAddress,
+          data: pendingJobs[i],
+          gas: 500000,
+          to: contractAddress
+        }
 
-    const modelId = 1;
-    const gradientsAddress = 'QmNqVVej89i1xDGDgiHZzXbiX9RypoFGFEGHgWqeZBRaUk';
-
-    const data = web3.eth.abi.encodeFunctionCall({
-        name: 'addGradient',
-        type: 'function',
-        inputs: [{
-          type: 'uint256',
-          name: 'model_id'
-        }, {
-          type: 'bytes32[]',
-          name: '_grad_addr'
-        }]
-    }, [modelId, addressToArray(gradientsAddress)]);
-
-    const params = {
-      from: specificNetworkAddress,
-      data: data,
-      gas: 500000,
-      to: contractAddress
+        uport.sendTransaction(params).then(txResponse => {
+          console.log('txResponse', txResponse)
+        })
+        .catch(err => console.error(err))
+      }
     }
-
-    uport.sendTransaction(params).then(txResponse => {
-      console.log('txResponse', txResponse)
-    })
-    .catch(err => console.error(err))
   })
   .catch(err => console.error(err))
 }

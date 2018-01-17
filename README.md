@@ -1,19 +1,21 @@
 
 # Services
 
+The below services are currently requiring `Bygone`. Eventually we can port everything to `.NET`.
+
 ## IPFS Daemon
 
 Our goal is to implement the IPFS daemon in .NET.
 
-API: https://github.com/richardschneider/net-ipfs-api
-Daemon: https://github.com/richardschneider/net-ipfs-engine
+- API: https://github.com/richardschneider/net-ipfs-api
+- Daemon: https://github.com/richardschneider/net-ipfs-engine
 
 ## Ethereum Node
 
 Eventually we'll be able to implement a full ethereum node in .NET.
 
-API: https://github.com/Nethereum/Nethereum
-Full node: (No known projects)
+- API: https://github.com/Nethereum/Nethereum
+- Full node: (No known projects)
 
 ## Identity / Key Management
 
@@ -21,4 +23,4 @@ The portability of OpenMined to multiple platforms (Web, Mobile, Game Consoles, 
 
 We're currently experimenting with https://github.com/uport-project/uport-js. We can keep the private keys securely on mobile while using QR codes to sign transactions. It works for any device with a screen.
 
-We need it ported to .NET.
+- Uport .NET: (No known projects)

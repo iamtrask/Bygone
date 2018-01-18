@@ -6,6 +6,7 @@ const uportConnect = require('uport-connect')
 const UPORT = require('uport')
 const mnid = require('mnid')
 const url = require('url');
+const solc = require('solc');
 
 // config
 const config = JSON.parse(fs.readFileSync('./config.json', 'utf8'))
@@ -28,41 +29,104 @@ var pendingJobs = Array();
 const web3 = new Web3(new Web3.providers.HttpProvider(ethereumUrl));
 
 // setup contract
-const contractAddress = '0xd60e1a150b59a89a8e6e6ff2c03ffb6cb4096205'
-const abi = JSON.parse(fs.readFileSync(abiFile, 'utf8'))
-const contract = new web3.eth.Contract(abi, contractAddress)
+if(config.network != "local") {
+  const contractAddress = '0xd60e1a150b59a89a8e6e6ff2c03ffb6cb4096205'
+  const abi = JSON.parse(fs.readFileSync(abiFile, 'utf8'))
+  const contract = new web3.eth.Contract(abi, contractAddress)
 
-// setup server
-const server = http.createServer((req, res) => {
-  console.log("got request", req.url);
-  if(req.url.includes("addModel")) {
-    var q = url.parse(req.url, true).query
+  setupServer()
+} else {
+  const input = fs.readFileSync(config.solFile);
+  const output = solc.compile(input.toString(), 1);
+  const bytecode = output.contracts[':TrainingGrid'].bytecode;
+  const abi = JSON.parse(output.contracts[':TrainingGrid'].interface)
 
-    addModel(q.model, (modelId) => {
-      res.statusCode = 200;
-      res.setHeader('Content-Type', 'text/plain');
-      res.end();
-    })
-  } else if(req.url.includes("addWeights")) {
-    var q = url.parse(req.url, true).query
+  var contract = new web3.eth.Contract(abi);
+  contract.deploy({
+    data: bytecode
+  })
+  .send({
+    from: '0x627306090abaB3A6e1400e9345bC60c78a8BEf57',
+    gas: 1500000,
+    gasPrice: '30'
+  }, function(error, transactionHash) { if(error) console.log(error); })
+  .on('error', function(error){ if(error) console.log(error); })
+  .then(function(newContractInstance){
+    console.log(newContractInstance.options.address)
 
-    addWeights(q.model, q.weights, () => {
-      res.statusCode = 200;
-      res.setHeader('Content-Type', 'text/plain');
-      res.end();
-    })
+    contract = new web3.eth.Contract(abi, newContractInstance.options.address);
+
+    contract.methods.countAvailableJobs().call({from: web3.eth.accounts.wallet[0]}).then(jobs => {
+      console.log("# of jobs", jobs);
+    });
+
+    setupServer()
+  });
+}
+
+function success(res, obj) {
+  res.statusCode = 200;
+  res.setHeader('Content-Type', 'text/plain');
+
+  if(obj != null){
+    res.end(obj);
   } else {
-    login((uri) => {
-      res.statusCode = 200;
-      res.setHeader('Content-Type', 'text/plain');
-      res.end(uri);
-    })
+    res.end();
   }
-});
+}
 
-server.listen(port, hostname, () => {
-  console.log(`Server running at http://${hostname}:${port}/`);
-});
+function setupServer() {
+  // setup server
+  const server = http.createServer((req, res) => {
+    console.log("got request", req.url);
+
+    var obj = url.parse(req.url, true)
+    var pathname = obj.pathname
+    var q = obj.query
+
+    if(obj.pathname == "addExperiment") {
+      var experimentAddress = q.experimentAddress;
+      var jobAddresses = q.jobAddresses;
+
+      addExperiment(experimentAddress, jobAddresses, () => {
+        success(res);
+      });
+    } else if(obj.pathname == "getExperiment") {
+      var experimentAddress = q.experimentAddress;
+
+      var experiment = getExperiment(experimentAddress, (experiment) => {
+        success(res, experiment)
+      });
+    } else if(obj.pathname == "getAvailableJob") {
+      var job = getAvailableJob((job) => {
+        success(res, job);
+      });
+    } else if(obj.pathname == "submitJobResult") {
+      var experimentAddress = q.experimentAddress;
+      var jobAddress = q.jobAddress;
+      var resultAddress = q.resultAddress;
+
+      submitJobResult(experimentAddress, jobAddress, resultAddress, () => {
+        success(res);
+      });
+    } else if (obj.pathname == "getResults") {
+        var jobAddress = q.jobAddress;
+
+        getResults(jobAddress, (result) => {
+          success(res, result);
+        })
+    } else {
+      login((uri) => {
+        success(res, uri);
+      })
+    }
+  });
+
+  server.listen(port, hostname, () => {
+    console.log(`Server running at http://${hostname}:${port}/`);
+  });
+}
+
 
 function addressToArray (ipfsAddress) {
   const targetLength = 64 // fill the address with 0 at the end to this length
@@ -85,59 +149,95 @@ function connectUport(cb) {
   })
 }
 
-
-var addModelFunc = {
-  name : "addModel",
-  type : "function",
-  inputs: [
-    {
-      name: "_weights",
-      type: "bytes32[]"
-    },
-    {
-      name: "initial_error",
-      type: "uint256"
-    },
-    {
-      name: "target_error",
-      type: "uint256"
-    }
-  ],
-}
-
-function addModel(modelAddress, cb) {
-  var modelAddressArray = addressToArray(modelAddress);
-
-  console.log("added model for address: ", modelAddressArray);
-
-  const data = web3.eth.abi.encodeFunctionCall(addModelFunc,
-                                               [modelAddressArray, 0, 0]);
+function sendTransaction(data) {
+  var from = "";
+  if(config.interface == 'web3'){
+    from = web3.eth.accounts.wallet[0];
+  } else {
+    from = specificNetworkAddress;
+  }
 
   const params = {
-    from: specificNetworkAddress,
+    from: from,
     data: data,
     gas: 500000,
     to: contractAddress
   }
 
-  uport.sendTransaction(params).then(txResponse => {
-    console.log('txResponse', txResponse)
-  })
-  .catch(err => console.error(err))
-
-  cb(1);
+  if(config.interface == 'web3') {
+    web3.eth.sendTransaction(params).then(txResponse => {
+      console.log('txResponse', txResponse);
+    })
+    .catch(err => console.error(err));
+  } else {
+    uport.sendTransaction(params).then(txResponse => {
+      console.log('txResponse', txResponse)
+    })
+    .catch(err => console.error(err))
+  }
 }
 
-var addGradientsFunc = {
-    name: 'addGradient',
-    type: 'function',
-    inputs: [{
-      type: 'uint256',
-      name: 'model_id'
-    }, {
-      type: 'bytes32[]',
-      name: '_grad_addr'
-    }]
+function addExperiment(experimentAddress, jobAddresses, cb) {
+  var addressArray = addressToArray(experimentAddress);
+  var jobAddressesArray = Array();
+
+  for(var i = 0; i < jobAddresses.length; i++) {
+    var array = addressToArray(jobAddresses[i]);
+    jobAddressesArray.push(array[0]);
+    jobAddressesArray.push(array[1]);
+  }
+
+  var data = contract.methods.addExperiment(addressArray, jobAddressesArray).encodeABI();
+
+  sendTransaction(data);
+
+  cb();
+}
+
+function getExperiment(experimentAddress, cb) {
+  var experimentAddress = addressToArray(config.experimentAddress);
+
+  contract.methods.getExperiment().call({from:specificNetworkAddress}).then(experiment => {
+    // TODO make this into some sort of JSON object???
+    cb(experiment);
+  })
+}
+
+function getAvailableJob() {
+  contract.methods.getAvailableJob().call({from: specificNetworkAddress}).then(job => {
+    var json = {
+      jobAddress: arrayToAddress(job[2])
+    };
+
+    cb(json);
+  })
+}
+
+function submitJobResult(jobAddress, resultAddress, cb) {
+  var jobData = {type: 'bytes32', value: addressToArray(jobAddress)};
+
+  var jobId = web3utils.soliditySha3(jobData);
+  var resultAddressArray = addressToArray(config.resultAddress);
+
+  var data = contract.methods.submitJobResult(jobId, resultAddressArray).encodeABI();
+
+  sendTransaction(data);
+
+  cb();
+}
+
+function getResults(jobAddress, cb) {
+  var jobData = {type: 'bytes32', value: addressToArray(config.jobAddress[0])};
+
+  var jobId = web3utils.soliditySha3(jobData);
+
+  contract.methods.getResults().call({from: specificNetworkAddress}).then(result => {
+    var json = {
+      owner: result[0],
+      resultAddress: result[1]
+    }
+    cb(result);
+  });
 }
 
 function addWeights(modelId, weightsAddress, cb) {
@@ -189,23 +289,9 @@ function login(cb) {
     specificNetworkAddress = decodedId.address
     console.log('specificNetworkAddress', specificNetworkAddress)
 
-    contract.methods['getNumModels']().call({from:specificNetworkAddress}).then(modelCount => {
-      console.log('modelCount', modelCount)
-    })
-
     if(pendingJobs.length > 0) {
       for(var i = 0; i < pendingJobs.length; i++) {
-        const params = {
-          from: specificNetworkAddress,
-          data: pendingJobs[i],
-          gas: 500000,
-          to: contractAddress
-        }
-
-        uport.sendTransaction(params).then(txResponse => {
-          console.log('txResponse', txResponse)
-        })
-        .catch(err => console.error(err))
+        sendTransaction(pendingJobs[i]);
       }
     }
   })

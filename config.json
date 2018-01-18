@@ -1,6 +1,8 @@
 {
   "hostname": "127.0.0.1",
   "port": 3000,
-  "network": "rinkeby",
-  "abiFile": "../mine.js/lib/ModelRepository.abi"
+  "network": "local",
+  "abiFile": "../Sonar/build/contracts/TrainingGrid.json",
+  "solFile": "../Sonar/contracts/TrainingGrid.sol",
+  "interface": "web3"
 }

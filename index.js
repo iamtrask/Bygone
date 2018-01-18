@@ -213,7 +213,7 @@ function getExperiment(experimentAddress, cb) {
 }
 
 function getAvailableJob() {
-  contract.methods.getAvailableJobs().call({from: specificNetworkAddress}).then(res => {
+  contract.methods.getAvailableJobIds().call({from: specificNetworkAddress}).then(res => {
     var allJobs = res[0];
     // stupid filtering!
 

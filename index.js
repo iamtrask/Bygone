@@ -27,21 +27,24 @@ var creds = null;
 var pendingJobs = Array();
 
 const web3 = new Web3(new Web3.providers.HttpProvider(ethereumUrl));
+var contractAddress = '0xd60e1a150b59a89a8e6e6ff2c03ffb6cb4096205'
 
 // setup contract
 if(config.network != "local") {
-  const contractAddress = '0xd60e1a150b59a89a8e6e6ff2c03ffb6cb4096205'
   const abi = JSON.parse(fs.readFileSync(abiFile, 'utf8'))
   const contract = new web3.eth.Contract(abi, contractAddress)
 
   setupServer()
 } else {
+
   const input = fs.readFileSync(config.solFile);
   const output = solc.compile(input.toString(), 1);
   const bytecode = output.contracts[':TrainingGrid'].bytecode;
   const abi = JSON.parse(output.contracts[':TrainingGrid'].interface)
 
   var contract = new web3.eth.Contract(abi);
+
+  // TODO shouldn't deploy every time!!!!! doesn't matter locally though
   contract.deploy({
     data: bytecode
   })
@@ -52,13 +55,15 @@ if(config.network != "local") {
   }, function(error, transactionHash) { if(error) console.log(error); })
   .on('error', function(error){ if(error) console.log(error); })
   .then(function(newContractInstance){
-    console.log(newContractInstance.options.address)
-
     contract = new web3.eth.Contract(abi, newContractInstance.options.address);
+    contractAddress = newContractInstance.options.address;
 
-    contract.methods.countAvailableJobs().call({from: web3.eth.accounts.wallet[0]}).then(jobs => {
+    web3.eth.accounts.wallet.add(secret.privateKey);
+
+    contract.methods.countExperiments().call().then(jobs => {
       console.log("# of jobs", jobs);
-    });
+    })
+    .catch(err => console.log(err));
 
     setupServer()
   });
@@ -150,15 +155,16 @@ function connectUport(cb) {
 }
 
 function sendTransaction(data) {
-  var from = "";
+  var f = "";
   if(config.interface == 'web3'){
-    from = web3.eth.accounts.wallet[0];
+    f = web3.eth.accounts.wallet[0];
   } else {
-    from = specificNetworkAddress;
+    f = specificNetworkAddress;
   }
 
+
   const params = {
-    from: from,
+    from: f,
     data: data,
     gas: 500000,
     to: contractAddress
@@ -166,7 +172,7 @@ function sendTransaction(data) {
 
   if(config.interface == 'web3') {
     web3.eth.sendTransaction(params).then(txResponse => {
-      console.log('txResponse', txResponse);
+      console.log('success!!! txResponse', txResponse);
     })
     .catch(err => console.error(err));
   } else {
@@ -213,13 +219,13 @@ function getAvailableJob() {
   })
 }
 
-function submitJobResult(jobAddress, resultAddress, cb) {
+function addResult(jobAddress, resultAddress, cb) {
   var jobData = {type: 'bytes32', value: addressToArray(jobAddress)};
 
   var jobId = web3utils.soliditySha3(jobData);
   var resultAddressArray = addressToArray(config.resultAddress);
 
-  var data = contract.methods.submitJobResult(jobId, resultAddressArray).encodeABI();
+  var data = contract.methods.addResult(jobId, resultAddressArray).encodeABI();
 
   sendTransaction(data);
 

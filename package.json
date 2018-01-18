@@ -9,6 +9,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "lodash": "^4.17.4",
     "solc": "^0.4.19",
     "uport-connect": "^0.7.0",
     "web3": "^1.0.0-beta.27"

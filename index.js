@@ -7,6 +7,7 @@ const UPORT = require('uport')
 const mnid = require('mnid')
 const url = require('url');
 const solc = require('solc');
+const _ = require('lodash');
 
 // config
 const config = JSON.parse(fs.readFileSync('./config.json', 'utf8'))
@@ -104,20 +105,22 @@ function setupServer() {
       });
     } else if(obj.pathname == "getAvailableJob") {
       var job = getAvailableJob((job) => {
+        console.log("GET JOB", job);
         success(res, job);
       });
-    } else if(obj.pathname == "submitJobResult") {
+    } else if(obj.pathname == "addResult") {
       var experimentAddress = q.experimentAddress;
       var jobAddress = q.jobAddress;
       var resultAddress = q.resultAddress;
 
-      submitJobResult(experimentAddress, jobAddress, resultAddress, () => {
+      addResult(jobAddress, resultAddress, () => {
         success(res);
       });
     } else if (obj.pathname == "getResults") {
         var jobAddress = q.jobAddress;
 
         getResults(jobAddress, (result) => {
+          console.log("GET result", result);
           success(res, result);
         })
     } else {
@@ -172,12 +175,12 @@ function sendTransaction(data) {
 
   if(config.interface == 'web3') {
     web3.eth.sendTransaction(params).then(txResponse => {
-      console.log('success!!! txResponse', txResponse);
+      console.log('web3 txResponse', txResponse);
     })
     .catch(err => console.error(err));
   } else {
     uport.sendTransaction(params).then(txResponse => {
-      console.log('txResponse', txResponse)
+      console.log('uport txResponse', txResponse)
     })
     .catch(err => console.error(err))
   }
@@ -210,9 +213,19 @@ function getExperiment(experimentAddress, cb) {
 }
 
 function getAvailableJob() {
-  contract.methods.getAvailableJob().call({from: specificNetworkAddress}).then(job => {
+  contract.methods.getAvailableJobs().call({from: specificNetworkAddress}).then(res => {
+    var allJobs = res[0];
+    // stupid filtering!
+
+    var zero = web3.utils.padRight(web3.utils.fromAscii("\0"), 66, "0");
+    someJobs = _.filter(allJobs[0], (job) => {
+      job !== zero
+    });
+
+    job = _.sample(someJobs);
+
     var json = {
-      jobAddress: arrayToAddress(job[2])
+      jobAddress: arrayToAddress(job)
     };
 
     cb(json);
@@ -237,10 +250,10 @@ function getResults(jobAddress, cb) {
 
   var jobId = web3utils.soliditySha3(jobData);
 
-  contract.methods.getResults().call({from: specificNetworkAddress}).then(result => {
+  contract.methods.getResults().call({from: specificNetworkAddress}).then(res => {
     var json = {
-      owner: result[0],
-      resultAddress: result[1]
+      owner: res[0],
+      resultAddress: res[1]
     }
     cb(result);
   });

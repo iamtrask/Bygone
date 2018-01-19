@@ -6,6 +6,7 @@ const mnid = require('mnid')
 const url = require('url');
 const solc = require('solc');
 const _ = require('lodash');
+const mkdirp = require('mkdirp');
 
 // config
 const config = JSON.parse(fs.readFileSync('./config.json', 'utf8'))
@@ -35,19 +36,34 @@ const server = new Hapi.Server();
 server.connection({ port: port, host: hostname });
 
 // setup contract
-if(config.network != "local") {
-  const abi = JSON.parse(fs.readFileSync(abiFile, 'utf8'));
-  const contract = new web3.eth.Contract(abi, contractAddress);
+var abi = null;
+var bytecode = null;
+var contract = null;
 
-  setupServer()
-} else {
+function getContract() {
   const input = fs.readFileSync(config.solFile);
   const output = solc.compile(input.toString(), 1);
-  const bytecode = output.contracts[':TrainingGrid'].bytecode;
-  const abi = JSON.parse(output.contracts[':TrainingGrid'].interface)
 
-if(contractAddress == undefined) {
-  var contract = new web3.eth.Contract(abi);
+  mkdirp('build', function(err) {
+    var jString = JSON.stringify(output);
+    fs.writeFile('build/TrainingGrid.json', jString, 'utf8');
+  });
+
+  bytecode = output.contracts[':TrainingGrid'].bytecode;
+  abi = JSON.parse(output.contracts[':TrainingGrid'].interface)
+}
+
+
+if(config.network != "local") {
+  // TODO redo rinkeby code
+  //abi = JSON.parse(fs.readFileSync(abiFile, 'utf8'));
+  //contract = new web3.eth.Contract(abi, contractAddress);
+
+  //setupServer()
+} else {
+  if(contractAddress == undefined) {
+    contract = new web3.eth.Contract(abi);
+
     contract.deploy({
       data: bytecode
     })
@@ -63,58 +79,34 @@ if(contractAddress == undefined) {
 
       console.log(contractAddress);
 
-      web3.eth.accounts.wallet.add(secret.privateKey);
-
-      contract.methods.countExperiments().call().then(jobs => {
-        console.log("# of jobs", jobs);
-      })
-      .catch(err => console.log(err));
 
       setupServer()
     });
   } else {
-    var contract = new web3.eth.Contract(abi, contractAddress);
-
-    web3.eth.accounts.wallet.add(secret.privateKey);
-
-    contract.methods.countExperiments().call().then(jobs => {
-      console.log("# of jobs", jobs);
-    })
-    .catch(err => console.log(err));
+    contract = new web3.eth.Contract(abi, contractAddress);
 
     setupServer()
   }
 }
 
-function success(res, obj) {
-  res.statusCode = 200;
-  res.setHeader('Content-Type', 'text/plain');
-
-  if(obj != null){
-    res.end(JSON.stringify(obj));
-  } else {
-    res.end();
-  }
-}
-
-function fail(res) {
-  res.statusCode = 400;
-  res.setHeader('Content-Type', 'text/plain');
-  res.end();
-}
-
 function setupServer() {
+  web3.eth.accounts.wallet.add(secret.privateKey);
+
+  contract.methods.countExperiments().call().then(experiments => {
+    console.log("# of experiments", experiments);
+  })
+  .catch(err => console.log(err));
 
   server.route({
     method: 'POST',
     path: '/experiment',
     handler: (req, reply) => {
-      var experimentAddress = request.params.experimentAddress;
-      var jobAddresses = JSON.parse(request.params.jobAddresses);
+      var experimentAddress = req.payload.experimentAddress;
+      var jobAddresses = JSON.parse(req.payload.jobAddresses);
 
-      addExperiment(experimentAddress, jobAddresses, () => {
+      addExperiment(experimentAddress, jobAddresses, (res) => {
         console.log("ADDED EXPERIMENT");
-        reply(res).code(200);
+        reply().code(200);
       });
     }
   });
@@ -124,7 +116,7 @@ function setupServer() {
     path: '/experiment/{experimentAddress}',
     handler: (req, reply) => {
       getExperiment(req.params.experimentAddress, (experiment) => {
-        reply(res, experiment);
+        reply(experiment);
       });
     }
   })
@@ -142,25 +134,24 @@ function setupServer() {
 
   server.route({
     method: 'GET',
-    path: '/job',
+    path: '/job/{jobId}',
     handler: (req, reply) => {
-      getJob((job) => {
+      getJob(req.params.jobId, (job) => {
         console.log("GET JOB", job);
-        reply(res, job);
+        reply(job);
       });
     }
   })
 
   server.route({
-    method: 'GET',
+    method: 'POST',
     path: '/result',
     handler: (req, reply) => {
-      var experimentAddress = req.params.experimentAddress;
-      var jobAddress = req.params.jobAddress;
-      var resultAddress = req.params.resultAddress;
+      var jobAddress = req.payload.jobAddress;
+      var resultAddress = req.payload.resultAddress;
 
       addResult(jobAddress, resultAddress, () => {
-        reply("Ok");
+        reply().code(200);
       });
     }
   })
@@ -185,6 +176,10 @@ function setupServer() {
     }
   })
 
+  server.on('response', function (request) {
+    console.log(request.info.remoteAddress + ': ' + request.method.toUpperCase() + ' ' + request.url.path);
+  });
+
   server.start((err) => {
     if (err) {
       throw err;
@@ -201,6 +196,11 @@ function addressToArray (ipfsAddress) {
   .map(part => part.concat('0'.repeat(targetLength - part.length))) // 0 pad at the end
   .map(part => '0x' + part) // prefix as hex
   return parts
+}
+
+function arrayToAddress (hexStrings) {
+  return hexStrings.map(e => Buffer.from(e.slice(2), 'hex').toString().split('\x00')[0])
+  .join('')
 }
 
 function connectUport(cb) {
@@ -226,7 +226,8 @@ function sendTransaction(data) {
   const params = {
     from: f,
     data: data,
-    gas: 500000,
+    gas: 1000000,
+    value: 100,
     to: contractAddress
   }
 
@@ -270,24 +271,35 @@ function getExperiment(experimentAddress, cb) {
   })
 }
 
+function toHexString(byteArray) {
+  return Array.from(byteArray, function(byte) {
+    return ('0' + (byte & 0xFF).toString(16)).slice(-2);
+  }).join('')
+}
+
 function getAvailableJobId(cb) {
   var json = {
     jobId: ""
   };
 
   contract.methods.getAvailableJobIds().call().then(res => {
+    var zero = web3.utils.padRight(web3.utils.fromAscii("\0"), 64, "0");
+
     if(res.length > 0) {
-      var allJobs = res[0];
+      if(_.isString(res)) {
+        if(res[0] !== zero) {
+          json.jobId = res[0];
+        }
+      } else {
+        // stupid filtering!
+        someJobs = _.filter(res, (job) => {
+          return job !== zero;
+        });
 
-      // stupid filtering!
-      var zero = web3.utils.padRight(web3.utils.fromAscii("\0"), 66, "0");
-      someJobs = _.filter(allJobs[0], (job) => {
-        job !== zero
-      });
+        job = _.sample(someJobs);
 
-      job = _.sample(someJobs);
-
-      json.jobAddress = job;
+        json.jobId = job;
+      }
     }
 
     cb(json);
@@ -300,9 +312,7 @@ function getJob(jobId, cb) {
   }
 
   contract.methods.getJob(jobId).call().then(res => {
-    if(res.length > 0) {
-      json.jobAddress = arrayToAddress(res[2]);
-    }
+    json.jobAddress = arrayToAddress(res[0]);
 
     cb(json);
   });
@@ -311,10 +321,10 @@ function getJob(jobId, cb) {
 function addResult(jobAddress, resultAddress, cb) {
   var jobData = {type: 'bytes32', value: addressToArray(jobAddress)};
 
-  var jobId = web3utils.soliditySha3(jobData);
-  var resultAddressArray = addressToArray(config.resultAddress);
+  var resultAddressArray = addressToArray(resultAddress);
+  var jobAddressArray = addressToArray(jobAddress);
 
-  var data = contract.methods.addResult(jobId, resultAddressArray).encodeABI();
+  var data = contract.methods.addResult(jobAddressArray, resultAddressArray).encodeABI();
 
   sendTransaction(data);
 
@@ -322,28 +332,24 @@ function addResult(jobAddress, resultAddress, cb) {
 }
 
 function getResults(jobAddress, cb) {
-  var jobData = {type: 'bytes32', value: addressToArray(config.jobAddress[0])};
+  var jobData = {type: 'bytes32', value: addressToArray(jobAddress)};
 
-  var jobId = web3utils.soliditySha3(jobData);
+  var jobId = web3.utils.soliditySha3(jobData);
 
   var json = {
     owner: "",
     resultAddress: ""
   }
 
-  contract.methods.getResults().call().then(res => {
-    if(res.length > 0) {
-      var json = {
-        owner: res[0],
-        resultAddress: res[1]
-      }
-    }
+  contract.methods.getResults(jobId).call().then(res => {
+    json.owner = res[1];
+    json.resultAddress = arrayToAddress(res[0]);
 
     cb(json);
   });
 }
 
-function addWeights(modelId, weightsAddress, cb) {
+/*function addWeights(modelId, weightsAddress, cb) {
   var weightsAddressArray = addressToArray(weightsAddress);
 
   console.log("add weights for model: ", modelId, " for: ", weightsAddressArray);
@@ -368,7 +374,7 @@ function addWeights(modelId, weightsAddress, cb) {
   }
 
   cb(1);
-}
+}*/
 
 function login(cb) {
   uport = connectUport(cb);

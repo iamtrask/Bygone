@@ -2,7 +2,11 @@
   "hostname": "192.168.2.14",
   "port": 3000,
   "network": "local",
-  "abiFile": "build/TrainingGrid.json",
-  "solFile": "../Sonar/contracts/TrainingGrid.sol",
-  "interface": "web3"
+  "interface": "web3",
+  "contractAddress": "0x4D2D24899c0B115a1fce8637FCa610Fe02f1909e",
+  "solidity" : {
+    "buildDir": "build",
+    "abiFile": "build/TrainingGrid.json",
+    "solFile": "../Sonar/contracts/TrainingGrid.sol"
+  }
 }

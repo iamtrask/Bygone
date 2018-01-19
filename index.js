@@ -4,31 +4,39 @@ const uportConnect = require('uport-connect')
 const UPORT = require('uport')
 const mnid = require('mnid')
 const url = require('url');
-const solc = require('solc');
+
 const _ = require('lodash');
 const mkdirp = require('mkdirp');
+const c = require('./contract.js');
 
 // config
 const config = JSON.parse(fs.readFileSync('./config.json', 'utf8'))
-const hostname = config.hostname
-const port = config.port
-const network = config.network
-const abiFile = config.abiFile
+const hostname = config.hostname;
+const port = config.port;
+const network = config.network;
+const abiFile = config.solidity.abiFile;
+const buildDir = config.solidity.buildDir;
+const solFile = config.solidity.solFile;
+const interface = config.interface;
+var contractAddress = config.contractAddress;
 
+// secret config
 const secret = JSON.parse(fs.readFileSync('./config-secret.json', 'utf8'))
 const ethereumUrl = secret.ethereumUrl
-const clientId = secret.clientId
-const key = secret.key
+const clientId = secret.uport.clientId
+const key = secret.uport.key
+
+const privateKey = secret.privateKey;
+const publicKey = secret.publicKey;
 
 var uport;
-var specificNetworkAddress = null;
-var decodedId = null;
-var creds = null;
+var specificNetworkAddress;
+var decodedId;
+var creds;
 var pendingJobs = Array();
 
 const web3 = new Web3(new Web3.providers.HttpProvider(ethereumUrl));
 //var contractAddress = '0xd60e1a150b59a89a8e6e6ff2c03ffb6cb4096205'
-var contractAddress = secret.contractAddress;
 
 // setup server
 const Hapi = require('hapi');
@@ -36,61 +44,33 @@ const server = new Hapi.Server();
 server.connection({ port: port, host: hostname });
 
 // setup contract
-var abi = null;
-var bytecode = null;
-var contract = null;
+var contract;
 
-function getContract() {
-  const input = fs.readFileSync(config.solFile);
-  const output = solc.compile(input.toString(), 1);
-
-  mkdirp('build', function(err) {
-    var jString = JSON.stringify(output);
-    fs.writeFile('build/TrainingGrid.json', jString, 'utf8');
-  });
-
-  bytecode = output.contracts[':TrainingGrid'].bytecode;
-  abi = JSON.parse(output.contracts[':TrainingGrid'].interface)
-}
-
-
-if(config.network != "local") {
+if(network != "local") {
   // TODO redo rinkeby code
   //abi = JSON.parse(fs.readFileSync(abiFile, 'utf8'));
   //contract = new web3.eth.Contract(abi, contractAddress);
 
   //setupServer()
 } else {
-  if(contractAddress == undefined) {
-    contract = new web3.eth.Contract(abi);
-
-    contract.deploy({
-      data: bytecode
-    })
-    .send({
-      from: '0xf17f52151EbEF6C7334FAD080c5704D77216b732',
-      gas: 1500000,
-      gasPrice: '30'
-    }, function(error, transactionHash) { if(error) console.log(error); })
-    .on('error', function(error){ if(error) console.log(error); })
-    .then(function(newContractInstance){
-      contract = new web3.eth.Contract(abi, newContractInstance.options.address);
-      contractAddress = newContractInstance.options.address;
-
-      console.log(contractAddress);
-
-
-      setupServer()
-    });
-  } else {
-    contract = new web3.eth.Contract(abi, contractAddress);
-
-    setupServer()
+  var contractConfig = {
+    web3: web3,
+    contractAddress: contractAddress,
+    abiFile: abiFile,
+    solFile: solFile,
+    buildDir: buildDir,
+    publicKey: publicKey
   }
+
+  c.createContract(contractConfig, (con, address) => {
+    contract = con;
+    contractAddress = address;
+    setupServer();
+  })
 }
 
 function setupServer() {
-  web3.eth.accounts.wallet.add(secret.privateKey);
+  web3.eth.accounts.wallet.add(privateKey);
 
   contract.methods.countExperiments().call().then(experiments => {
     console.log("# of experiments", experiments);
@@ -217,7 +197,7 @@ function connectUport(cb) {
 
 function sendTransaction(data) {
   var f = "";
-  if(config.interface == 'web3'){
+  if(interface == 'web3'){
     f = web3.eth.accounts.wallet[0];
   } else {
     f = specificNetworkAddress;
@@ -232,14 +212,14 @@ function sendTransaction(data) {
   }
 
   console.log("SENDING TRANSACTION...");
-  if(config.interface == 'web3') {
+  if(interface == 'web3') {
     web3.eth.sendTransaction(params).then(txResponse => {
-      console.log('web3 txResponse', txResponse);
+      console.log('web3 txResponse');
     })
     .catch(err => console.error(err));
   } else {
     uport.sendTransaction(params).then(txResponse => {
-      console.log('uport txResponse', txResponse)
+      console.log('uport txResponse')
     })
     .catch(err => console.error(err))
   }
@@ -263,7 +243,7 @@ function addExperiment(experimentAddress, jobAddresses, cb) {
 }
 
 function getExperiment(experimentAddress, cb) {
-  var experimentAddress = addressToArray(config.experimentAddress);
+  var experimentAddress = addressToArray(experimentAddress);
 
   contract.methods.getExperiment().call().then(experiment => {
     // TODO make this into some sort of JSON object???

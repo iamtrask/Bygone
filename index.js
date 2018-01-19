@@ -1,5 +1,3 @@
-
-const http = require('http');
 const fs = require('fs');
 const Web3 = require('web3');
 const uportConnect = require('uport-connect')
@@ -30,6 +28,11 @@ var pendingJobs = Array();
 const web3 = new Web3(new Web3.providers.HttpProvider(ethereumUrl));
 //var contractAddress = '0xd60e1a150b59a89a8e6e6ff2c03ffb6cb4096205'
 var contractAddress = secret.contractAddress;
+
+// setup server
+const Hapi = require('hapi');
+const server = new Hapi.Server();
+server.connection({ port: port, host: hostname });
 
 // setup contract
 if(config.network != "local") {
@@ -101,72 +104,94 @@ function fail(res) {
 }
 
 function setupServer() {
-  // setup server
-  const server = http.createServer((req, res) => {
-    var decodeUrl = decodeURIComponent(req.url);
-    console.log("got request", decodeUrl);
-    var obj = url.parse(decodeUrl, true);
-    var pathname = obj.pathname;
-    var q = obj.query;
 
-    if(obj.pathname == "/addExperiment") {
-      var experimentAddress = q.experimentAddress;
-      var jobAddresses = JSON.parse(q.jobAddresses);
+  server.route({
+    method: 'POST',
+    path: '/experiment',
+    handler: (req, reply) => {
+      var experimentAddress = request.params.experimentAddress;
+      var jobAddresses = JSON.parse(request.params.jobAddresses);
 
-      //if(_.isString(experimentAddress) && _.isArray(jobAddresses)) {
-        addExperiment(experimentAddress, jobAddresses, () => {
-          console.log("ADDED EXPERIMENT");
-          success(res);
-        });
-      //} else {
-        //  fail(res);
-      //}
-    } else if(obj.pathname == "/getExperiment") {
-      var experimentAddress = q.experimentAddress;
-
-      if(_.isString(experimentAddress)) {
-        var experiment = getExperiment(experimentAddress, (experiment) => {
-          success(res, experiment)
-        });
-      } else {
-        fail(res);
-      }
-
-    } else if(obj.pathname == "/getAvailableJobId") {
-      var job = getAvailableJobId((job) => {
-        console.log("GET JOB ID", job);
-        success(res, job);
+      addExperiment(experimentAddress, jobAddresses, () => {
+        console.log("ADDED EXPERIMENT");
+        reply(res).code(200);
       });
-    } else if(obj.pathname == "/getJob") {
-        var job = getJob((job) => {
-          console.log("GET JOB", job);
-          success(res, job);
-        });
-    } else if(obj.pathname == "/addResult") {
-      var experimentAddress = q.experimentAddress;
-      var jobAddress = q.jobAddress;
-      var resultAddress = q.resultAddress;
-
-      addResult(jobAddress, resultAddress, () => {
-        success(res);
-      });
-    } else if (obj.pathname == "/getResults") {
-        var jobAddress = q.jobAddress;
-
-        getResults(jobAddress, (result) => {
-          console.log("GET result", result);
-          success(res, result);
-        })
-    } else {
-      login((uri) => {
-        success(res, uri);
-      })
     }
   });
 
-  server.listen(port, hostname, () => {
-    console.log(`Server running at http://${hostname}:${port}/`);
-  });
+  server.route({
+    method: 'GET',
+    path: '/experiment/{experimentAddress}',
+    handler: (req, reply) => {
+      getExperiment(req.params.experimentAddress, (experiment) => {
+        reply(res, experiment);
+      });
+    }
+  })
+
+  server.route({
+    method: 'GET',
+    path: '/availableJobId',
+    handler: (req, reply) => {
+      getAvailableJobId((job) => {
+        console.log("GET JOB ID", job);
+        reply(job);
+      });
+    }
+  })
+
+  server.route({
+    method: 'GET',
+    path: '/job',
+    handler: (req, reply) => {
+      getJob((job) => {
+        console.log("GET JOB", job);
+        reply(res, job);
+      });
+    }
+  })
+
+  server.route({
+    method: 'GET',
+    path: '/result',
+    handler: (req, reply) => {
+      var experimentAddress = req.params.experimentAddress;
+      var jobAddress = req.params.jobAddress;
+      var resultAddress = req.params.resultAddress;
+
+      addResult(jobAddress, resultAddress, () => {
+        reply("Ok");
+      });
+    }
+  })
+
+  server.route({
+    method: 'GET',
+    path: '/results/{jobAddress}',
+    handler: (req, reply) => {
+      var jobAddress = req.params.jobAddress;
+      getResults(jobAddress, (result) => {
+        console.log("GET result", result);
+        reply(result);
+      })
+    }
+  })
+
+  server.route({
+    method: 'GET',
+    path: '/{any*}',
+    handler: (req, reply) => {
+       // TODO -- did login ever work ??
+    }
+  })
+
+  server.start((err) => {
+    if (err) {
+      throw err;
+    }
+
+    console.log(`Server running at: ${server.info.uri}`);
+  })
 }
 
 function addressToArray (ipfsAddress) {

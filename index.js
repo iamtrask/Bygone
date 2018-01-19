@@ -28,13 +28,13 @@ var creds = null;
 var pendingJobs = Array();
 
 const web3 = new Web3(new Web3.providers.HttpProvider(ethereumUrl));
-var contractAddress = '0xd60e1a150b59a89a8e6e6ff2c03ffb6cb4096205'
-contractAddress = secret.contractAddress;
+//var contractAddress = '0xd60e1a150b59a89a8e6e6ff2c03ffb6cb4096205'
+var contractAddress = secret.contractAddress;
 
 // setup contract
 if(config.network != "local") {
-  const abi = JSON.parse(fs.readFileSync(abiFile, 'utf8'))
-  const contract = new web3.eth.Contract(abi, contractAddress)
+  const abi = JSON.parse(fs.readFileSync(abiFile, 'utf8'));
+  const contract = new web3.eth.Contract(abi, contractAddress);
 
   setupServer()
 } else {
@@ -43,14 +43,13 @@ if(config.network != "local") {
   const bytecode = output.contracts[':TrainingGrid'].bytecode;
   const abi = JSON.parse(output.contracts[':TrainingGrid'].interface)
 
+if(contractAddress == undefined) {
   var contract = new web3.eth.Contract(abi);
-
-  if(contractAddress == null) {
     contract.deploy({
       data: bytecode
     })
     .send({
-      from: '0x627306090abaB3A6e1400e9345bC60c78a8BEf57',
+      from: '0xf17f52151EbEF6C7334FAD080c5704D77216b732',
       gas: 1500000,
       gasPrice: '30'
     }, function(error, transactionHash) { if(error) console.log(error); })
@@ -58,9 +57,21 @@ if(config.network != "local") {
     .then(function(newContractInstance){
       contract = new web3.eth.Contract(abi, newContractInstance.options.address);
       contractAddress = newContractInstance.options.address;
+
+      console.log(contractAddress);
+
+      web3.eth.accounts.wallet.add(secret.privateKey);
+
+      contract.methods.countExperiments().call().then(jobs => {
+        console.log("# of jobs", jobs);
+      })
+      .catch(err => console.log(err));
+
+      setupServer()
     });
   } else {
-    contract = new web3.eth.Contract(abi, contractAddress);
+    var contract = new web3.eth.Contract(abi, contractAddress);
+
     web3.eth.accounts.wallet.add(secret.privateKey);
 
     contract.methods.countExperiments().call().then(jobs => {
@@ -83,29 +94,44 @@ function success(res, obj) {
   }
 }
 
+function fail(res) {
+  res.statusCode = 400;
+  res.setHeader('Content-Type', 'text/plain');
+  res.end();
+}
+
 function setupServer() {
   // setup server
   const server = http.createServer((req, res) => {
-    console.log("got request", req.url);
-
-    var obj = url.parse(req.url, true)
-    console.log(obj.pathname);
-    var pathname = obj.pathname
-    var q = obj.query
+    var decodeUrl = decodeURIComponent(req.url);
+    console.log("got request", decodeUrl);
+    var obj = url.parse(decodeUrl, true);
+    var pathname = obj.pathname;
+    var q = obj.query;
 
     if(obj.pathname == "/addExperiment") {
       var experimentAddress = q.experimentAddress;
-      var jobAddresses = q.jobAddresses;
+      var jobAddresses = JSON.parse(q.jobAddresses);
 
-      addExperiment(experimentAddress, jobAddresses, () => {
-        success(res);
-      });
+      //if(_.isString(experimentAddress) && _.isArray(jobAddresses)) {
+        addExperiment(experimentAddress, jobAddresses, () => {
+          console.log("ADDED EXPERIMENT");
+          success(res);
+        });
+      //} else {
+        //  fail(res);
+      //}
     } else if(obj.pathname == "/getExperiment") {
       var experimentAddress = q.experimentAddress;
 
-      var experiment = getExperiment(experimentAddress, (experiment) => {
-        success(res, experiment)
-      });
+      if(_.isString(experimentAddress)) {
+        var experiment = getExperiment(experimentAddress, (experiment) => {
+          success(res, experiment)
+        });
+      } else {
+        fail(res);
+      }
+
     } else if(obj.pathname == "/getAvailableJobId") {
       var job = getAvailableJobId((job) => {
         console.log("GET JOB ID", job);
@@ -179,6 +205,7 @@ function sendTransaction(data) {
     to: contractAddress
   }
 
+  console.log("SENDING TRANSACTION...");
   if(config.interface == 'web3') {
     web3.eth.sendTransaction(params).then(txResponse => {
       console.log('web3 txResponse', txResponse);

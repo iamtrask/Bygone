@@ -23,8 +23,11 @@ var contractAddress = config.contractAddress;
 // secret config
 const secret = JSON.parse(fs.readFileSync('./config-secret.json', 'utf8'))
 const ethereumUrl = secret.ethereumUrl
-const clientId = secret.uport.clientId
-const key = secret.uport.key
+
+if(secret.uport != undefined) {
+  const clientId = secret.uport.clientId
+  const key = secret.uport.key
+}
 
 const privateKey = secret.privateKey;
 const publicKey = secret.publicKey;

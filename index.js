@@ -88,7 +88,7 @@ function setupServer() {
       var jobAddresses = JSON.parse(req.payload.jobAddresses);
 
       addExperiment(experimentAddress, jobAddresses, (res) => {
-        console.log("ADDED EXPERIMENT", experimentAddress, jobAddressesq);
+        console.log("ADDED EXPERIMENT", experimentAddress, jobAddresses);
         reply().code(200);
       });
     }

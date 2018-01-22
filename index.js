@@ -85,7 +85,7 @@ function setupServer() {
       var jobAddresses = JSON.parse(req.payload.jobAddresses);
 
       addExperiment(experimentAddress, jobAddresses, (res) => {
-        console.log("ADDED EXPERIMENT");
+        console.log("ADDED EXPERIMENT", experimentAddress, jobAddressesq);
         reply().code(200);
       });
     }
@@ -152,7 +152,7 @@ function setupServer() {
     method: 'GET',
     path: '/{any*}',
     handler: (req, reply) => {
-       // TODO -- did login ever work ??
+       // TODO fix rinkeby
     }
   })
 
@@ -247,7 +247,7 @@ function getExperiment(experimentAddress, cb) {
 
   contract.methods.getExperiment().call().then(experiment => {
     // TODO make this into some sort of JSON object???
-    cb(experiment);
+    // cb(experiment);
   })
 }
 

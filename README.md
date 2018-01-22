@@ -24,3 +24,7 @@ The portability of OpenMined to multiple platforms (Web, Mobile, Game Consoles, 
 We're currently experimenting with https://github.com/uport-project/uport-js. We can keep the private keys securely on mobile while using QR codes to sign transactions. It works for any device with a screen.
 
 - Uport .NET: (No known projects)
+
+# Installation Tutorial
+
+An installation tutorial can be found here https://github.com/OpenMined/tutorials/tree/master/installation/Bygone/installation.md

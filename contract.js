@@ -1,5 +1,6 @@
 const fs = require('fs');
 const solc = require('solc');
+const mkdirp = require('mkdirp');
 
 module.exports = {
   createContract: function(contractConfig, cb) {
@@ -50,7 +51,7 @@ function getContractByteCode(contractConfig, cb) {
     if(err) {
       const input = fs.readFileSync(solFile);
       const output = solc.compile(input.toString(), 1);
-      mkdirp(config.buildDir, function(err) {
+      mkdirp(buildDir, function(err) {
         var jString = JSON.stringify(output);
         fs.writeFile(abiFile, jString, 'utf8');
       });

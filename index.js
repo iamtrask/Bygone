@@ -324,7 +324,11 @@ function getResults(jobAddress, cb) {
     resultAddress: ""
   }
 
-  contract.methods.getResults(jobId).call().then(res => {
+  contract.methods.getResults(jobId).call((err, res) => {
+    if(err) {
+      cb(json);
+    }
+  }).then(res => {
     json.owner = res[1];
     json.resultAddress = arrayToAddress(res[0]);
 

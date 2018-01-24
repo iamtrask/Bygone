@@ -9,6 +9,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "ganache-core": "^2.0.2",
     "hapi": "^16.6.2",
     "lodash": "^4.17.4",
     "solc": "^0.4.19",

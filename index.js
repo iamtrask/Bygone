@@ -8,6 +8,7 @@ const url = require('url');
 const _ = require('lodash');
 const mkdirp = require('mkdirp');
 const c = require('./contract.js');
+const Ganache = require('ganache-core');
 
 // config
 const config = JSON.parse(fs.readFileSync('./config.json', 'utf8'))
@@ -38,7 +39,8 @@ var decodedId;
 var creds;
 var pendingJobs = Array();
 
-const web3 = new Web3(new Web3.providers.HttpProvider(ethereumUrl));
+//const web3 = new Web3(new Web3.providers.HttpProvider(ethereumUrl));
+const web3 = new Web3(Ganache.provider({ mnemonic: "candy maple cake sugar pudding cream honey rich smooth crumble sweet treat" }));
 //var contractAddress = '0xd60e1a150b59a89a8e6e6ff2c03ffb6cb4096205'
 
 // setup server

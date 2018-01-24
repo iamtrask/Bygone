@@ -133,6 +133,8 @@ function setupServer() {
       var jobAddress = req.payload.jobAddress;
       var resultAddress = req.payload.resultAddress;
 
+      console.log("POSTING RESULT", resultAddress);
+
       addResult(jobAddress, resultAddress, () => {
         reply().code(200);
       });

@@ -1,5 +1,5 @@
 {
-  "hostname": "192.168.2.14",
+  "hostname": "127.0.0.1",
   "port": 3000,
   "network": "local",
   "interface": "web3",

@@ -211,7 +211,7 @@ function sendTransaction(data, gasAmount) {
   const params = {
     from: f,
     data: data,
-    gas: gasAmount + 200000,
+    gas: gasAmount + 200000, // estimate gas might not be correct so add another 200000 for now
     value: 100,
     to: contractAddress
   }

@@ -87,8 +87,14 @@ function setupServer() {
       var experimentAddress = req.payload.experimentAddress;
       var jobAddresses = JSON.parse(req.payload.jobAddresses);
 
-      addExperiment(experimentAddress, jobAddresses, (res) => {
+      addExperiment(experimentAddress, jobAddresses, (err) => {
         console.log("ADDED EXPERIMENT", experimentAddress, jobAddresses);
+
+        if(err) {
+          reply().code(500);
+          return;
+        }
+
         reply().code(200);
       });
     }
@@ -133,9 +139,15 @@ function setupServer() {
       var jobAddress = req.payload.jobAddress;
       var resultAddress = req.payload.resultAddress;
 
-      console.log("POSTING RESULT", resultAddress);
 
-      addResult(jobAddress, resultAddress, () => {
+      addResult(jobAddress, resultAddress, (err) => {
+        console.log("POSTED RESULT", resultAddress);
+
+        if(err) {
+          reply().code(500)
+          return;
+        }
+
         reply().code(200);
       });
     }
@@ -200,7 +212,7 @@ function connectUport(cb) {
   })
 }
 
-function sendTransaction(data, gasAmount) {
+function sendTransaction(data, gasAmount, cb) {
   var f = "";
   if(interface == 'web3'){
     f = web3.eth.accounts.wallet[0];
@@ -221,8 +233,12 @@ function sendTransaction(data, gasAmount) {
     web3.eth.sendTransaction(params)
     .then(txResponse => {
       console.log('web3 txResponse');
+      cb();
     })
-    .catch(err => console.error(err));
+    .catch(err => {
+      console.error(err)
+      cb(err);
+    });
   } else {
     uport.sendTransaction(params).then(txResponse => {
       console.log('uport txResponse')
@@ -245,14 +261,13 @@ function addExperiment(experimentAddress, jobAddresses, cb) {
   method.estimateGas((error, gasAmount) => {
     if(error) {
       console.log("ERROR estimating gas: ", error);
+      cb(error);
       return;
     }
 
     var data = method.encodeABI();
-    sendTransaction(data, gasAmount);
+    sendTransaction(data, gasAmount, cb);
   });
-
-  cb();
 }
 
 function getExperiment(experimentAddress, cb) {
@@ -262,12 +277,6 @@ function getExperiment(experimentAddress, cb) {
     // TODO make this into some sort of JSON object???
     // cb(experiment);
   })
-}
-
-function toHexString(byteArray) {
-  return Array.from(byteArray, function(byte) {
-    return ('0' + (byte & 0xFF).toString(16)).slice(-2);
-  }).join('')
 }
 
 function getAvailableJobId(cb) {
@@ -317,11 +326,17 @@ function addResult(jobAddress, resultAddress, cb) {
   var resultAddressArray = addressToArray(resultAddress);
   var jobAddressArray = addressToArray(jobAddress);
 
-  var data = contract.methods.addResult(jobAddressArray, resultAddressArray).encodeABI();
+  var method = contract.methods.addResult(jobAddressArray, resultAddressArray);
+  method.estimateGas((error, gasAmount) => {
+    if(error) {
+      console.log("ERROR estimating gas: ", error);
+      cb(error)
+      return;
+    }
 
-  sendTransaction(data);
-
-  cb();
+    var data = method.encodeABI();
+    sendTransaction(data, gasAmount, cb);
+  });
 }
 
 function getResults(jobAddress, cb) {
@@ -345,33 +360,6 @@ function getResults(jobAddress, cb) {
     cb(json);
   });
 }
-
-/*function addWeights(modelId, weightsAddress, cb) {
-  var weightsAddressArray = addressToArray(weightsAddress);
-
-  console.log("add weights for model: ", modelId, " for: ", weightsAddressArray);
-
-  const data = web3.eth.abi.encodeFunctionCall(addGradientsFunc,
-                                              [modelId, weightsAddressArray]);
-
-  if(specificNetworkAddress == null) {
-    pendingJobs.push(data)
-  } else {
-    const params = {
-      from: specificNetworkAddress,
-      data: data,
-      gas: 500000,
-      to: contractAddress
-    }
-
-    uport.sendTransaction(params).then(txResponse => {
-      console.log('txResponse', txResponse)
-    })
-    .catch(err => console.error(err))
-  }
-
-  cb(1);
-}*/
 
 function login(cb) {
   uport = connectUport(cb);

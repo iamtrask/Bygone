@@ -200,7 +200,7 @@ function connectUport(cb) {
   })
 }
 
-function sendTransaction(data) {
+function sendTransaction(data, gasAmount) {
   var f = "";
   if(interface == 'web3'){
     f = web3.eth.accounts.wallet[0];
@@ -211,14 +211,15 @@ function sendTransaction(data) {
   const params = {
     from: f,
     data: data,
-    gas: 1000000,
+    gas: gasAmount + 200000, // estimate gas might not be correct so add another 200000 for now
     value: 100,
     to: contractAddress
   }
 
-  console.log("SENDING TRANSACTION...");
+  console.log("SENDING TRANSACTION... with this many gas: ", gasAmount);
   if(interface == 'web3') {
-    web3.eth.sendTransaction(params).then(txResponse => {
+    web3.eth.sendTransaction(params)
+    .then(txResponse => {
       console.log('web3 txResponse');
     })
     .catch(err => console.error(err));
@@ -240,9 +241,16 @@ function addExperiment(experimentAddress, jobAddresses, cb) {
     jobAddressesArray.push(array[1]);
   }
 
-  var data = contract.methods.addExperiment(addressArray, jobAddressesArray).encodeABI();
+  var method = contract.methods.addExperiment(addressArray, jobAddressesArray)
+  method.estimateGas((error, gasAmount) => {
+    if(error) {
+      console.log("ERROR estimating gas: ", error);
+      return;
+    }
 
-  sendTransaction(data);
+    var data = method.encodeABI();
+    sendTransaction(data, gasAmount);
+  });
 
   cb();
 }

@@ -85,7 +85,13 @@ function setupServer() {
     path: '/experiment',
     handler: (req, reply) => {
       var experimentAddress = req.payload.experimentAddress;
-      var jobAddresses = JSON.parse(req.payload.jobAddresses);
+
+      var jobAddresses = req.payload.jobAddresses;
+      if(_.isString(jobAddresses)) {
+        jobAddresses = JSON.parse(jobAddresses);
+      } else {
+        jobAddresses = jobAddresses;
+      }
 
       addExperiment(experimentAddress, jobAddresses, (err) => {
         console.log("ADDED EXPERIMENT", experimentAddress, jobAddresses);
@@ -170,6 +176,8 @@ function setupServer() {
     path: '/{any*}',
     handler: (req, reply) => {
        // TODO fix rinkeby
+       console.log(req)
+       reply().code(404)
     }
   })
 

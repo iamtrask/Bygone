@@ -22,7 +22,7 @@ module.exports = {
             from: publicKey,
             gas: 1500000,
             gasPrice: '30'
-            //chainId: 10
+            //chainId: 10 this was needed to get stuff to work on geth not sure why!
         }, function(error, transactionHash) { if(error) console.log("Contract error: ", error); })
         .on('error', function(error){ if(error) console.log("Contract error: ", error); })
         .then(function(newContractInstance){

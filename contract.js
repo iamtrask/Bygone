@@ -13,16 +13,18 @@ module.exports = {
 
       if(contractAddress == undefined) {
         contract = new web3.eth.Contract(abi);
+        web3.eth.accounts.wallet.add(contractConfig.privateKey);
 
         contract.deploy({
-          data: bytecode
+          data: '0x' + bytecode
         })
         .send({
-          from: publicKey,
-          gas: 1500000,
-          gasPrice: '30'
-        }, function(error, transactionHash) { if(error) console.log(error); })
-        .on('error', function(error){ if(error) console.log(error); })
+            from: publicKey,
+            gas: 1500000,
+            gasPrice: '30'
+            //chainId: 10
+        }, function(error, transactionHash) { if(error) console.log("Contract error: ", error); })
+        .on('error', function(error){ if(error) console.log("Contract error: ", error); })
         .then(function(newContractInstance){
           contract = new web3.eth.Contract(abi, newContractInstance.options.address);
           newContractAddress = newContractInstance.options.address;

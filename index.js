@@ -181,7 +181,16 @@ function setupServer() {
       var jobAddress = req.payload.jobAddress;
       var resultAddress = req.payload.resultAddress;
 
-      addResult(jobAddress, resultAddress, (err) => {
+      var returnAbi;
+      var accountAddress;
+      if(req.payload.returnAbi == undefined) {
+        returnAbi = false;
+      } else {
+        returnAbi = req.payload.returnAbi;
+        accountAddress = req.payload.accountAddress;
+      }
+
+      addResult(jobAddress, resultAddress, returnAbi, accountAddress, (err, abi) => {
         console.log("POSTED RESULT", resultAddress);
 
         if(err) {
@@ -189,7 +198,7 @@ function setupServer() {
           return;
         }
 
-        reply().code(200);
+        reply(abi).code(200);
       });
     }
   })
@@ -321,20 +330,24 @@ function addExperiment(experimentAddress, jobAddresses, returnAbi, accountAddres
 
     var data = method.encodeABI();
     if(returnAbi) {
-      web3.eth.getTransactionCount(accountAddress)
-      .then(count => {
-        var json = {
-          abi: data,
-          nonce: count,
-          estimatedGas: gasAmount + 20000,
-          contractAddress: contractAddress
-        }
-        cb(null, json)
-      })
+      sendAbi(accountAddress, data, gasAmount, cb)
     } else {
       sendTransaction(data, gasAmount, cb);
     }
   });
+}
+
+function sendAbi(accountAddress, abi, estimatedGas, cb) {
+  web3.eth.getTransactionCount(accountAddress)
+  .then(count => {
+    var json = {
+      abi: abi,
+      nonce: count,
+      estimatedGas: estimatedGas + 20000,
+      contractAddress: contractAddress
+    }
+    cb(null, json)
+  })
 }
 
 function getExperiment(experimentAddress, cb) {
@@ -387,7 +400,7 @@ function getJob(jobId, cb) {
   });
 }
 
-function addResult(jobAddress, resultAddress, cb) {
+function addResult(jobAddress, resultAddress, returnAbi, accountAddress, cb) {
   var jobData = {type: 'bytes32', value: addressToArray(jobAddress)};
 
   var resultAddressArray = addressToArray(resultAddress);
@@ -402,7 +415,11 @@ function addResult(jobAddress, resultAddress, cb) {
     }
 
     var data = method.encodeABI();
-    sendTransaction(data, gasAmount, cb);
+    if(returnAbi) {
+      sendAbi(accountAddress, data, gasAmount, cb)
+    } else {
+      sendTransaction(data, gasAmount, cb);
+    }
   });
 }
 
